@@ -1,0 +1,3 @@
+/home/xjtuiair/workspace/x264-decode/build/CMakeFiles/rebuild_cache.dir
+/home/xjtuiair/workspace/x264-decode/build/CMakeFiles/edit_cache.dir
+/home/xjtuiair/workspace/x264-decode/build/CMakeFiles/H264Demo.dir
