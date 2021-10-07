@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -33,13 +34,38 @@ cv::Point cur_pt;
 typedef struct
 {
     int target_header;
+
     int target_id[20];
     int target_x[20];
     int target_y[20];
     int target_w[20];
     int target_h[20];
+    int target_num;
     float target_velocity[20];
 } targetInfo;
+
+typedef struct
+{
+    bool use_hdr;
+    bool use_flip;
+} controlData;
+
+int sendSocketData(){
+    controlData tempData;
+    tempData.use_flip = true;
+    tempData.use_hdr = true;
+
+    struct sockaddr_in send_addr;
+    memset(&send_addr,0,sizeof(struct sockaddr_in));
+    send_addr.sin_family = AF_INET;
+    send_addr.sin_port = htons(9999);
+    send_addr.sin_addr.s_addr = inet_addr("192.168.1.128");
+    if(sendto(sock_fd,(controlData*)&tempData,sizeof(tempData),0,(sockaddr *)&send_addr,sizeof(send_addr)) <= 0)
+    {
+        printf("send data error");
+    }
+}
+
 
 int getSocketData(targetInfo temp){
     int recv_num;
@@ -55,7 +81,7 @@ int getSocketData(targetInfo temp){
     }
     if(temp.target_header==0xFFEEAABB) {
         std::cout<<"recv data: "<<std::endl;
-        for(int i =0; i<20;i++){
+        for(int i =0; i<temp.target_num;i++){
             std::cout<<temp.target_id[i]<<", ";
             std::cout<<temp.target_x[i]<<", ";
             std::cout<<temp.target_y[i]<<", ";    
@@ -130,9 +156,9 @@ void on_mouse(int event, int x, int y, int flags, void *)
         int width = abs(pre_pt.x - cur_pt.x);
         int height = abs(pre_pt.y - cur_pt.y);
         dst = org(Rect(min(cur_pt.x, pre_pt.x), min(cur_pt.y, pre_pt.y), width, height));
-        cv::resize(dst,dst,cv::Size(640,480));
+        cv::resize(dst,dst,cv::Size(width*1.5,height*1.5));
         cv::namedWindow("dst");
-        cvMoveWindow("dst",1220,20);
+        cvMoveWindow("dst",0,560);
         cv::imshow("dst", dst);
 
     }
@@ -186,7 +212,7 @@ int main(int argc, char * argv[]) {
             }
 
             cout << "Received packet from " << sourceAddress << ":" << sourcePort << endl;
- 
+            sendSocketData();
     
             m_h264Decoder.decode(longbuf, PACK_SIZE * total_pack,org);
 
@@ -194,7 +220,7 @@ int main(int argc, char * argv[]) {
                 cerr << "decode failure!" << endl;
                 continue;
             }
-
+            cv::resize(org, org, cv::Size(1520,560));
             if(set_rect)  {
                 std::cout<<"set rect!"<<std::endl;
                 cv::rectangle(org, pre_pt, cur_pt, Scalar(0, 255, 0, 0), 2, 8, 0);
@@ -231,51 +257,4 @@ int main(int argc, char * argv[]) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-// int main()
-// {
-//     cv::Mat frame;
-//     cv::Mat dst;
-
-//     cv::VideoCapture videoCapture(0);
-//     for (int i = 0; i < 10; ++i)
-//     {
-//         videoCapture >> frame;
-//     }
-
-//     CH264Decoder m_h264Decoder;
-//     m_h264Decoder.initial();
-
-
-//     cv::Mat cvDst;
-//     int nWaitTime =1;
-//     while (1)
-//     {
-//         videoCapture >>frame;
-//         if( frame.empty() )
-//             break;
-
-//         // do encode
-//         AVPacket *pkt = h264.encode(frame);
-//         int size = pkt->size;
-//         uchar* data = nullptr;
-//         data = pkt->data;
-
-//         m_h264Decoder.decode(data,size,dst);
-//         cv::imshow("decode",dst);
- 
-//     }
-
-//     return 0;
-// }
 
