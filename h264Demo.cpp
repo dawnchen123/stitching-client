@@ -26,10 +26,16 @@ int len;
 bool set_rect =false;
 string command;
 
+int hdr_stat = 0;
+int flip_stat = 0;
+int detect_stat = 0;
+int contrastValue = 50; // 对比度
+int brightValue = 50; // 亮度值
+
 
 cv::Mat org;
-cv::Point pre_pt;
-cv::Point cur_pt;
+cv::Point pre_pt = cv::Point(-1,-1);
+cv::Point cur_pt = cv::Point(-1,-1);
 
 typedef struct
 {
@@ -40,20 +46,28 @@ typedef struct
     int target_y[20];
     int target_w[20];
     int target_h[20];
+    int target_class[20];
+    int target_prob[20];
     int target_num;
     float target_velocity[20];
 } targetInfo;
 
 typedef struct
 {
-    bool use_hdr;
+    bool use_ssr;
     bool use_flip;
-} controlData;
+    bool use_detect;
+    int contrast;
+    int bright;
+} controlData;  //下发的command
 
 int sendSocketData(){
     controlData tempData;
-    tempData.use_flip = true;
-    tempData.use_hdr = true;
+    tempData.use_flip = (bool)flip_stat;
+    tempData.use_ssr = (bool)hdr_stat;
+    tempData.use_detect = (bool)detect_stat;
+    tempData.contrast = contrastValue;
+    tempData.bright = brightValue;
 
     struct sockaddr_in send_addr;
     memset(&send_addr,0,sizeof(struct sockaddr_in));
@@ -119,26 +133,16 @@ int initSocketData(){
 
 
 
-void keboardListener()
-{
-	while(1)
-    {
-        cin>>command;
-        cout<<"command:"<<command<<endl;
-    }
-}
-
 void on_mouse(int event, int x, int y, int flags, void *)
 {
     cv::Mat dst, img, tmp;
-
     if (event == CV_EVENT_LBUTTONDOWN)
     {
         pre_pt = cv::Point(x, y);
         cout<<pre_pt<<endl;
+        set_rect = false;
     }
-    else if (event == CV_EVENT_MOUSEMOVE && flags)//摁下左键，flags为1 
-
+    else if (event == CV_EVENT_MOUSEMOVE && flags && pre_pt.x>0 && !set_rect)//摁下左键，flags为1 
     {
         org.copyTo(tmp);
         cur_pt = cv::Point(x, y);
@@ -147,7 +151,7 @@ void on_mouse(int event, int x, int y, int flags, void *)
         std::cout<<cur_pt<<endl;
         cv::imshow("CamShow", tmp);//画的时候显示框
     }
-    else if (event == CV_EVENT_LBUTTONUP &&  abs(pre_pt.x - cur_pt.x)>10 && abs(cur_pt.y- pre_pt.y)>10 && abs(pre_pt.x - cur_pt.x)<org.cols && abs(cur_pt.y- pre_pt.y)<org.rows && cur_pt.x>0 && cur_pt.y>0)
+    else if (event == CV_EVENT_LBUTTONUP  &&  abs(pre_pt.x - cur_pt.x)>10 && abs(cur_pt.y- pre_pt.y)>10 && abs(pre_pt.x - cur_pt.x)<org.cols && abs(cur_pt.y- pre_pt.y)<org.rows && cur_pt.x>0 && cur_pt.y>0)
     {
         set_rect = true;
         org.copyTo(img);
@@ -158,14 +162,41 @@ void on_mouse(int event, int x, int y, int flags, void *)
         dst = org(Rect(min(cur_pt.x, pre_pt.x), min(cur_pt.y, pre_pt.y), width, height));
         cv::resize(dst,dst,cv::Size(width*1.5,height*1.5));
         cv::namedWindow("dst");
-        cvMoveWindow("dst",0,560);
+        cvMoveWindow("dst",0,600);
         cv::imshow("dst", dst);
 
     }
 
 }
 
+//滑条回调函数
+void on_change(int, void*)  
+{
+    for (int y = 0; y < org.rows; y++)
+    {
+        uchar * data = org.ptr<uchar>(y); // 获得每行首地址
+        uchar * data2 = org.ptr<uchar>(y);
+        for (int x = 0; x < org.cols*org.channels();x++)
+            data[x] = saturate_cast<uchar>(data2[x] *contrastValue*0.02  + brightValue-50);
+            
+    }
+}
 
+//按键回调函数
+void hdrCallback(int, void*)
+{
+	std::cout<<hdr_stat<<std::endl;
+}
+
+void flipCallback(int, void*)
+{
+    std::cout<<flip_stat<<std::endl;
+}
+
+void detectCallback(int, void*)
+{
+    std::cout<<detect_stat<<std::endl;
+}
 int main(int argc, char * argv[]) {
 
 	targetInfo get_target_data;
@@ -176,10 +207,15 @@ int main(int argc, char * argv[]) {
 
     unsigned short servPort = atoi("10000"); // First arg:  local port
 
-    thread keyboardListenerTh(keboardListener);
+
     namedWindow("CamShow");
     setMouseCallback("CamShow", on_mouse, 0);   
     cvMoveWindow("CamShow",20,20);
+    createTrackbar("contrastValue: ", "CamShow", &contrastValue, 100, on_change);
+    createTrackbar("brightValue: ", "CamShow", &brightValue, 100, on_change);
+    createTrackbar("SSR: ", "CamShow", &hdr_stat, 1, hdrCallback);
+    createTrackbar("FLIP: ", "CamShow", &flip_stat, 1, flipCallback);
+    createTrackbar("DETECT: ", "CamShow", &detect_stat, 1, detectCallback);
 
     try {
         UDPSocket sock(servPort);
@@ -225,18 +261,11 @@ int main(int argc, char * argv[]) {
                 std::cout<<"set rect!"<<std::endl;
                 cv::rectangle(org, pre_pt, cur_pt, Scalar(0, 255, 0, 0), 2, 8, 0);
             }
-             imshow("CamShow",org);
 
-            //imwrite("frame.png",img);
-            if(command == "p")
-            {
-                string filename;
-                std::stringstream StrStm;
-                StrStm<<screenshotCnt++;
-                StrStm>>filename;
-                imwrite("img"+filename+".png",org);
-                command = "";
-            }
+            on_change(contrastValue, 0);
+            on_change(brightValue, 0);
+            imshow("CamShow",org);
+
             
             getSocketData(get_target_data);
 
